@@ -189,6 +189,35 @@ $presentation-h3-font-size: 0.91em;
 .reveal .resource-slide h2 { color: white; }
 .reveal .resource-slide strong { color: #ffd6a5; }
 .reveal .resource-slide a { color: #a7f3d0; }
+.reveal .appendix-slide {
+  padding: 54px 66px !important;
+  background:
+    radial-gradient(circle at 7% 14%, rgba(42,157,143,.20) 0 145px, transparent 147px),
+    radial-gradient(circle at 94% 86%, rgba(242,142,91,.20) 0 190px, transparent 192px),
+    linear-gradient(135deg, #eaf8f6 0%, #fff7f0 100%);
+}
+.reveal .appendix-slide h2 {
+  color: #102a43;
+  text-align: center;
+  border: 0;
+  margin: 0 0 .38em;
+}
+.reveal .appendix-slide h2::after { margin: .18em auto 0; }
+.reveal .appendix-card {
+  box-sizing: border-box;
+  width: 94%;
+  margin: 0 auto;
+  padding: .68em 1em .58em;
+  border: 1px solid rgba(15,118,110,.16);
+  border-radius: 25px;
+  background: rgba(255,255,255,.90);
+  box-shadow: 0 22px 55px rgba(16,42,67,.13);
+}
+.reveal .appendix-card h3 { color: #102a43; font-size: 1.05em; margin: 0 0 .38em; }
+.reveal .appendix-card p { margin: 0 0 .32em; font-size: .82em; line-height: 1.17; }
+.reveal .appendix-card strong { color: #17324d; }
+.reveal .appendix-card a { color: #d24f45; font-weight: 700; text-decoration: none; }
+.reveal .appendix-card a:hover { color: #0f766e; text-decoration: underline; }
 .reveal .closing-slide { background: linear-gradient(125deg, #102a43, #0f766e); color: #effcf6; padding: 72px !important; }
 .reveal .closing-slide h2 { color: #fff; }
 .reveal .closing-slide blockquote { background: rgba(255,255,255,.1); color: #fff; border-left-color: #f7b267; box-shadow: none; }

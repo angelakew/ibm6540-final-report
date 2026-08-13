@@ -660,14 +660,26 @@ Run controlled experiments on timing, audiences, and remarketing messages.
 5. Deploy a simple scoring app
 6. Measure incremental conversion through an experiment
 
-## Project resources {.resource-slide}
+## Appendix {.appendix-slide}
 
-**GitHub repository:** [angelakew/ibm6540-final-report](https://github.com/angelakew/ibm6540-final-report)  
-**Presentation:** [View the published RevealJS slides](https://angelakew.github.io/ibm6540-final-report/)  
-**Deployed model:** *Add the Shiny or Vetiver URL*
+::: {.appendix-card}
+### Project resources
 
-**Dataset:** [UCI Online Shoppers Purchasing Intention](https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset)  
-**DOI:** [10.24432/C5F88Q](https://doi.org/10.24432/C5F88Q)
+**GitHub repository**  
+[View the Group 6 project repository](https://github.com/angelakew/ibm6540-final-report)
+
+**Presentation slides**  
+[Open the published RevealJS presentation](https://angelakew.github.io/ibm6540-final-report/)
+
+**Project dataset**  
+[View the UCI Online Shoppers dataset abstract](https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset)
+
+**Dataset citation**  
+[UCI dataset DOI: 10.24432/C5F88Q](https://doi.org/10.24432/C5F88Q)
+
+**Model availability**  
+The reproducible model analysis is included in the project QMD. A public scoring app is a planned next step.
+:::
 
 ::: {.notes}
 [Sources]
@@ -675,7 +687,7 @@ Run controlled experiments on timing, audiences, and remarketing messages.
 - Dataset DOI: https://doi.org/10.24432/C5F88Q
 :::
 
-## Appendix: reproducibility
+## Reproducibility notes
 
 - Random seed: 6540
 - Stratified 80/20 train/test split
@@ -683,11 +695,6 @@ Run controlled experiments on timing, audiences, and remarketing messages.
 - Test set used only for final comparison
 - R packages: tidymodels, tidyverse, ranger, and Quarto
 - Complete analysis code is contained in this QMD file
-
-**Project links**
-
-- [GitHub repository](https://github.com/angelakew/ibm6540-final-report)
-- [Published presentation](https://angelakew.github.io/ibm6540-final-report/)
 
 ## The business value is focused learning {.statement-slide .closing-slide}
 
