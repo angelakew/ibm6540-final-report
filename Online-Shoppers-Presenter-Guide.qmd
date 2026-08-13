@@ -1,0 +1,490 @@
+---
+title: "Online Shoppers Project: Presenter Guide"
+subtitle: "Slide scripts, dataset notes, and professor Q&A"
+author:
+  - Angela Qian
+  - Bhamini Pillai
+  - Willy Su
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+    embed-resources: true
+    code-fold: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Fast project summary
+
+Our project uses the **Online Shoppers Purchasing Intention Dataset** from the UCI Machine Learning Repository. Each row represents one website session. The outcome is whether the session ended in a purchase. We compare classification models, explain the behavioral drivers of purchase probability, and explore visitor and seasonal opportunities.
+
+The safest one-sentence description is:
+
+> We use session-level browsing and visitor information to predict whether an online visit will end in a purchase and to identify patterns that could guide conversion strategy.
+
+## Team speaking plan
+
+| Presenter | Slides | Main responsibility | Target time |
+|---|---:|---|---:|
+| Angela Qian | 1–16 | Context, data, preprocessing, and Objective 1 | 7 minutes |
+| Bhamini Pillai | 17–23 | Objective 2 and behavioral interpretation | 5 minutes |
+| Willy Su | 24–36 | Objective 3, conclusions, and appendix | 8 minutes |
+
+Aim to finish the prepared presentation in **19–20 minutes**, leaving five minutes for questions.
+
+# Angela's script
+
+## Slide 1 — Cover
+
+“Hello, we are Angela Qian, Bhamini Pillai, and Willy Su. Our project is called *Predicting Online Purchases*. We studied how website-session behavior can help an e-commerce company recognize purchase opportunities and improve conversion decisions.”
+
+## Slide 2 — Table of contents
+
+“We will first explain the business problem and dataset. Then each team member will present one analytics objective. We will finish with combined findings, recommendations, limitations, and next steps.”
+
+## Slide 3 — Introduction
+
+“Every website session is a potential sale, but most visitors leave without purchasing. The challenge is not only predicting which sessions will convert. The company also needs to understand what behavior separates purchases from non-purchases.”
+
+## Slide 4 — Problem definition
+
+“Our business problem has three parts. First, predict purchase likelihood. Second, identify the strongest behavioral signals. Third, find visitor and seasonal patterns that can improve marketing decisions. These findings could support website improvements, traffic evaluation, and remarketing.”
+
+## Slide 5 — Research objectives
+
+“We divided the project into three objectives. I compare classification models. Bhamini explains the behavioral drivers of conversion. Willy evaluates visitor-type and seasonal patterns. Each objective supports a different business decision.”
+
+## Slide 6 — Importance
+
+“Conversion analysis matters because it can help a business focus on higher-quality traffic, identify customer-journey friction, create more relevant remarketing audiences, and plan campaigns around stronger periods. The model is meant to support decisions rather than automatically make them.”
+
+## Slide 7 — Population and sample
+
+“The sample contains 12,330 e-commerce sessions collected over one year. UCI states that each session belongs to a different user. There are 17 predictors and one binary outcome called Revenue. A value of true means the session ended in a transaction. There are no reported missing values.”
+
+“The intended population is future sessions from a similar e-commerce environment. We should not claim that the sample represents every online retailer because the original retailer is anonymized.”
+
+## Slide 8 — Sample characteristics
+
+“The variables follow the customer journey. Engagement variables measure page counts and time. Friction and value variables include bounce rate, exit rate, and page value. Context variables include month, visitor type, weekend status, traffic type, device information, and region.”
+
+## Slide 9 — Data wrangling
+
+“We imported the CSV, recoded the target as a factor with ‘No purchase’ and ‘Purchase,’ and converted categorical codes such as browser, region, operating system, and traffic type into factors. We checked types, ranges, missingness, and class balance before fitting models.”
+
+“The data is imbalanced: 15.5% of sessions purchased and 84.5% did not. That is why accuracy alone is not enough.”
+
+## Slide 10 — Objective 1 transition
+
+“My analytics objective asks which model predicts purchases best. I compare logistic regression, a decision tree, and a random forest using the same data split and preprocessing.”
+
+## Slide 11 — Methods
+
+“Logistic regression provides an interpretable baseline. A decision tree captures nonlinear rules and interactions. Random forest is an ensemble of many trees and can represent more complex patterns. We did not use a regression model because the target is categorical rather than continuous.”
+
+## Slide 12 — Data split
+
+“We used an 80/20 train-test split. The split was stratified by Revenue so both sets kept approximately the same purchase rate. The training data was used to fit the models. The test data was held out for final comparison.”
+
+## Slide 13 — Recipe and dummy variables
+
+“We used one tidymodels recipe for consistent preprocessing. `step_novel` handles unseen categories. `step_unknown` protects against future missing categories. `step_dummy` converts categorical predictors into zero-one columns. `step_zv` removes predictors with no variation, and `step_normalize` puts numeric predictors on a common scale.”
+
+“For example, VisitorType has three categories, so the recipe creates two dummy variables and leaves one reference category. This avoids perfect multicollinearity.”
+
+## Slide 14 — Model comparison
+
+“The random forest produced the best ranking performance, with a test ROC AUC of 0.919. Logistic regression reached 0.870, and the decision tree reached 0.864. The decision tree had stronger recall at the default cutoff, but the random forest had the best overall probability ranking.”
+
+## Slide 15 — Threshold analysis
+
+“A classification threshold turns probability into a yes-or-no prediction. At the standard 50% threshold, random-forest recall was 51.3% and precision was 75.7%. At a 30% threshold, recall increased to 75.1% while precision decreased to 62.5%.”
+
+“This is a business tradeoff. A lower threshold finds more potential purchasers but creates more false positive alerts.”
+
+## Slide 16 — Objective 1 finding
+
+“My conclusion is to use the random forest to rank sessions and choose the final threshold based on campaign capacity and the cost of missing a purchasing session. The 30% threshold is appropriate when the business values coverage, while 50% is better when outreach is expensive.”
+
+“I will now hand the presentation to Bhamini, who will explain what the model learned about customer behavior.”
+
+# Bhamini's script
+
+## Slide 17 — Objective 2 transition
+
+“My objective asks what behavior signals conversion. I focus on variable importance, product engagement, exit behavior, and the role of PageValues.”
+
+## Slide 18 — Product-page duration
+
+“Purchasing sessions spent substantially longer on product-related pages. The median was approximately 1,110 seconds for purchasing sessions compared with 510 seconds for non-purchasing sessions. This is an association, not proof that keeping someone on a page longer will cause a sale.”
+
+## Slide 19 — Variable importance
+
+“PageValues was by far the most important random-forest predictor. ExitRates ranked second, followed by product duration, administrative activity, product-page counts, and bounce rate. Permutation importance measures how much model performance worsens when a predictor is shuffled.”
+
+## Slide 20 — PageValues sensitivity analysis
+
+“PageValues deserves special attention because Google Analytics defines it using the average value of pages viewed before a transaction. This makes it closely related to the purchase outcome and potentially unavailable early in the session.”
+
+“To test whether earlier browsing behavior still contains information, we fitted a second logistic model after removing PageValues.”
+
+## Slide 21 — Behavioral model results
+
+“Without PageValues, logistic-regression ROC AUC was 0.715. This means behavior still provided moderate ranking information. However, recall at the default 50% threshold was only 3.7%. The model was conservative because purchases are the minority class.”
+
+“Its 83.9% accuracy is not impressive by itself because predicting no purchase for everyone would already be 84.5% accurate.”
+
+## Slide 22 — Partial dependence
+
+“The partial-dependence plot shows that predicted purchase probability increases as product-related duration rises. We generated this by changing product duration across the test sample, predicting each row, and averaging the probabilities.”
+
+“This explains model behavior while holding the sample constant, but it still does not prove a causal relationship.”
+
+## Slide 23 — Objective 2 finding
+
+“My conclusion is that PageValues is the strongest signal, but it must be used carefully because it is close to the transaction. Product engagement and exit behavior provide earlier, more actionable clues. The business could use these signals to identify visitors who may need assistance or remarketing.”
+
+“I will now hand the presentation to Willy for the visitor and seasonal analysis.”
+
+# Willy's script
+
+## Slide 24 — Objective 3 transition
+
+“My objective asks which visitor and seasonal segments deserve attention. I compare observed conversion rates with model-based partial-dependence estimates.”
+
+## Slide 25 — Observed month pattern
+
+“Observed conversion changed across the year. November had the highest purchase rate at 25.4%, while February was the lowest at about 1.6%. These are descriptive rates, so other differences between monthly visitors may partly explain them.”
+
+## Slide 26 — Interpretation method
+
+“For the adjusted analysis, we set Month or VisitorType to one category for every test session, generated random-forest predictions, averaged them, and repeated the process for the remaining categories. This creates a model-based partial-dependence summary.”
+
+## Slide 27 — Adjusted month pattern
+
+“November remained the strongest month after the model accounted for other predictors. Late-year sessions generally had higher predicted probabilities, although December declined. This suggests that campaign timing may matter beyond simple differences in visitor composition.”
+
+## Slide 28 — Visitor type
+
+“The model predicted an average purchase probability of 18.4% for new visitors and 15.1% for returning visitors. The small ‘Other’ group was 18.8%. Visitor type matters, but its effect is much smaller than PageValues or the main behavioral measures.”
+
+## Slide 29 — Objective 3 finding
+
+“My conclusion is that timing and visitor type can improve campaign planning, but they should complement session behavior rather than replace it. The company could test different messages for new and returning visitors and prepare conversion campaigns before the late-year peak.”
+
+## Slide 30 — Combined findings
+
+“Together, our three objectives answer the original business problem. Random forest ranked purchase likelihood well. Page value, exit behavior, and engagement explained much of the prediction. Month and visitor type provided additional segmentation opportunities.”
+
+## Slide 31 — Recommendations
+
+“We recommend three actions. First, prioritize sessions using a threshold matched to outreach capacity. Second, improve high-exit journeys and support sustained product interest. Third, test timing, audiences, and remarketing messages through controlled experiments.”
+
+## Slide 32 — Limitations
+
+“Our data represents separate sessions rather than customers followed over time. The retailer and product categories are anonymized. PageValues may be too close to the outcome for early prediction. The data is imbalanced, and model associations are not causal. The results must be validated on newer company data before deployment.”
+
+## Slide 33 — Future work
+
+“Next, we would tune hyperparameters with cross-validation, compare probability calibration, connect thresholds with business costs, add SHAP explanations, deploy a simple scoring application, and measure incremental conversion through an experiment.”
+
+## Slide 34 — Resources
+
+“This slide will contain our GitHub repository, published RevealJS presentation, and deployed model links. The official UCI dataset and DOI are also provided for verification and reproducibility.”
+
+## Slide 35 — Reproducibility
+
+“For reproducibility, we used seed 6540, an 80/20 stratified split, one shared preprocessing recipe, and a held-out test set. The complete R analysis is contained in the presentation QMD.”
+
+## Slide 36 — Closing
+
+“Our main message is that prediction is only the first step. The business should use the model to identify opportunities, use interpretation to understand the journey, and then test whether the recommended actions actually increase conversion. Thank you, and we welcome your questions.”
+
+# Dataset understanding
+
+## What exactly is one row?
+
+One row is one **website session**, not one transaction, page, product, or known customer. UCI states that each session belongs to a different user in the one-year sample.
+
+## What is the target?
+
+`Revenue` is the binary class label:
+
+- `TRUE` means the session ended in a transaction.
+- `FALSE` means the session did not end in a transaction.
+
+In our analysis, these were labeled `Purchase` and `No purchase`.
+
+## How many rows and predictors?
+
+- 12,330 sessions
+- 17 predictors
+- 1 outcome variable
+- 18 total CSV columns
+- 1,908 purchasing sessions
+- 10,422 non-purchasing sessions
+- 15.5% positive class
+
+## Numeric behavioral variables
+
+- `Administrative`: number of administrative pages visited
+- `Administrative_Duration`: time on administrative pages
+- `Informational`: number of informational pages visited
+- `Informational_Duration`: time on informational pages
+- `ProductRelated`: number of product-related pages visited
+- `ProductRelated_Duration`: time on product-related pages
+- `BounceRates`: average bounce rate of pages in the session
+- `ExitRates`: average exit rate of pages in the session
+- `PageValues`: average Google Analytics page value for pages visited
+- `SpecialDay`: closeness to a special shopping day
+
+## Categorical variables
+
+- `Month`: month of the session; the file contains ten observed months
+- `OperatingSystems`: anonymized operating-system code
+- `Browser`: anonymized browser code
+- `Region`: anonymized regional code
+- `TrafficType`: anonymized traffic-source category
+- `VisitorType`: new, returning, or other
+- `Weekend`: whether the session occurred on a weekend
+
+## Why are January and April absent?
+
+The dataset contains ten observed month labels rather than all twelve months. UCI does not provide enough information to explain why January and April are absent. Do not invent a reason. State that this is a limitation of the supplied data.
+
+## Is it real?
+
+Yes. It is hosted by the UCI Machine Learning Repository, has dataset DOI `10.24432/C5F88Q`, is credited to C. Okan Sakar and Yomi Kastro, and is connected to a peer-reviewed article in *Neural Computing and Applications*.
+
+The retailer is anonymized. This protects commercial information but limits external validation and generalization.
+
+# Dummy-variable cheat sheet
+
+The categorical predictors were converted into dummy variables using:
+
+```r
+step_dummy(all_nominal_predictors())
+```
+
+| Predictor | Observed levels | Dummy columns |
+|---|---:|---:|
+| Month | 10 | 9 |
+| OperatingSystems | 8 | 7 |
+| Browser | 13 | 12 |
+| Region | 9 | 8 |
+| TrafficType | 20 | 19 |
+| VisitorType | 3 | 2 |
+| Weekend | 2 | 1 |
+
+Why one fewer dummy than categories?
+
+> One category becomes the reference level. Creating all category indicators together with an intercept would produce exact multicollinearity, sometimes called the dummy-variable trap.
+
+`Revenue` is the target factor. It was not dummy-encoded as a predictor.
+
+# Professor Q&A
+
+## Why is this classification and not regression?
+
+The target has two categories—purchase and no purchase. Classification models estimate the probability or class of a categorical outcome. Regression would be appropriate for a continuous target such as order value.
+
+## What is the population?
+
+The defensible population is future sessions from a similar e-commerce environment. We cannot claim all global online shoppers because the retailer, product mix, and sampling frame are anonymized.
+
+## What is the unit of analysis?
+
+One website session.
+
+## What is the positive class?
+
+`Purchase`. We explicitly used `event_level = "second"` so yardstick treated Purchase as the event when calculating recall, precision, and ROC AUC.
+
+## Why stratify the split?
+
+Only 15.5% of sessions purchased. Stratification keeps approximately the same positive-class proportion in the training and test sets, reducing the chance of an unrepresentative split.
+
+## Why 80/20?
+
+It leaves most observations for training while preserving about 2,466 sessions for final testing. It is a practical choice, not the only acceptable split.
+
+## Did you use cross-validation?
+
+Not in the current final comparison. We used a held-out test set and fixed model specifications. Cross-validated hyperparameter tuning is listed as future work. Do not claim that the model was fully tuned.
+
+## Why normalize for trees if trees do not require it?
+
+We used one shared recipe for comparability. Normalization is useful for logistic regression but generally does not change tree split ordering. A production workflow could use model-specific recipes.
+
+## What does `step_novel()` do?
+
+It creates a safe level for a category that appears in new data but was absent from training data.
+
+## What does `step_unknown()` do if there are no missing values?
+
+The current dataset has no missing values. The step makes the workflow safer if future production data contains missing categorical values. It is defensive preprocessing.
+
+## What does `step_zv()` do?
+
+It removes zero-variance predictors. A predictor that has only one value in the training data cannot help prediction and can cause numerical issues.
+
+## Why logistic regression?
+
+It is a standard, interpretable baseline for a binary outcome. It provides a useful comparison with more flexible models.
+
+## Why a decision tree?
+
+It captures nonlinear rules and interactions and is easier to explain than an ensemble, although a single tree may be unstable.
+
+## Why random forest?
+
+It averages many decorrelated decision trees. This usually improves stability and predictive performance while modeling nonlinearities and interactions.
+
+## What is an ensemble?
+
+An ensemble combines predictions from multiple models. Random forest is an ensemble because it averages predictions from many trees fitted to bootstrap samples and random subsets of predictors.
+
+## What random-forest settings did you use?
+
+- 500 trees
+- `mtry = 7`
+- `min_n = 12`
+- Ranger probability forest
+- Permutation importance
+
+These were fixed specifications, not fully cross-validated choices.
+
+## Why not use accuracy as the main metric?
+
+Because 84.5% of sessions did not purchase. A useless model that predicts No purchase for every row would be 84.5% accurate but would find zero purchasers.
+
+## What is ROC AUC?
+
+ROC AUC measures how well a model ranks a randomly selected purchaser above a randomly selected non-purchaser across all possible thresholds. A value of 0.5 is random ranking; 1.0 is perfect ranking.
+
+## What is recall?
+
+Among sessions that actually purchased, recall is the percentage correctly identified by the model.
+
+## What is precision?
+
+Among sessions predicted to purchase, precision is the percentage that actually purchased.
+
+## Why did recall improve at a 30% threshold?
+
+A lower threshold labels more sessions as Purchase, so it captures more true purchasers. The tradeoff is more false positives and lower precision.
+
+## How should the company select a threshold?
+
+Use business costs and capacity. If missing a purchaser is expensive and outreach is cheap, use a lower threshold. If outreach is costly or limited, use a higher threshold.
+
+## Is 0.919 ROC AUC too good to be true?
+
+It is partly driven by `PageValues`, which is strongly related to transaction activity. That is why we disclose possible target leakage and run a sensitivity model without PageValues. The model should be interpreted as a session-ranking model unless feature availability at scoring time is verified.
+
+## What is target leakage?
+
+Leakage occurs when a predictor contains information that would not legitimately be available at the time of prediction or is created using the outcome. It can make test performance look unrealistically strong.
+
+## Is PageValues definitely leakage?
+
+Not automatically. It depends on when Google Analytics calculates and exposes it relative to the intended prediction time. Because its definition uses transaction value, we treat it as a serious leakage risk and report results without it.
+
+## Why is the no-PageValues model's accuracy below the majority baseline?
+
+Accuracy is threshold-dependent and not our main goal. Its ROC AUC of 0.715 shows moderate ranking information, but the 50% cutoff is poorly suited to the imbalanced target. Threshold adjustment or class-sensitive training would be needed.
+
+## What is permutation importance?
+
+It measures how much predictive performance deteriorates after randomly shuffling one predictor. A large decrease means the model relies strongly on that predictor.
+
+## Does variable importance show causation?
+
+No. It shows model reliance, not that changing the variable will cause a purchase.
+
+## What is a partial-dependence plot?
+
+It changes one predictor across a grid, generates predictions for the sample, and averages those predictions. It summarizes the model's average prediction pattern for that feature.
+
+## Does PDP prove causation?
+
+No. Correlated predictors and observational data limit causal interpretation. The business should validate proposed actions through experiments.
+
+## Why does new visitor conversion appear higher than returning visitor conversion?
+
+That is what the sample and fitted model show after adjustment. It may reflect the anonymous retailer, its marketing mix, or how VisitorType is recorded. We should not generalize this result to all e-commerce businesses.
+
+## Why is there an “Other” visitor category?
+
+It is an original dataset category. UCI does not provide a detailed explanation. Because it may be small or ambiguous, we report it but avoid making it the main business recommendation.
+
+## Why aren't there missing values?
+
+UCI reports none in the published file. That does not mean future business data will be complete, which is why a deployment pipeline should still handle missing categories.
+
+## Are rows independent?
+
+UCI states that each session belongs to a different user in this sample, which reduces repeated-user dependence. However, sessions may still share common campaigns, periods, or site conditions.
+
+## What ethical or privacy concerns exist?
+
+The public dataset uses anonymized device, region, traffic, and visitor codes and contains no direct personal identifiers. In a real deployment, the company should minimize data collection, protect session identifiers, monitor unfair treatment, and avoid manipulative targeting.
+
+## Can the model be deployed now?
+
+Not responsibly without newer company data, leakage checks, calibration, monitoring, and a defined scoring time. Our work is a validated class project and proof of concept, not a production-ready system.
+
+# Things not to claim
+
+- Do not say the model causes purchases.
+- Do not say the sample represents all online shoppers.
+- Do not say the random forest was fully tuned with cross-validation.
+- Do not say PageValues is unquestionably safe for real-time prediction.
+- Do not say 89.9% accuracy proves the model is excellent.
+- Do not invent the retailer, country, products, or reasons January and April are missing.
+- Do not call rows individual customers without clarifying they are sessions from different users.
+
+# Short emergency answers
+
+**What are you predicting?**  
+Whether a website session ends in a purchase.
+
+**What is one observation?**  
+One website session.
+
+**What is the positive class?**  
+Purchase.
+
+**Why classification?**  
+The target is binary.
+
+**Best model?**  
+Random forest by test ROC AUC, at 0.919.
+
+**Why not accuracy?**  
+The classes are imbalanced; an all-negative model is already 84.5% accurate.
+
+**Did you make dummy variables?**  
+Yes, with `step_dummy(all_nominal_predictors())`, using one reference level per categorical predictor.
+
+**Main concern?**  
+PageValues may introduce leakage depending on when it is calculated.
+
+**Main limitation?**  
+The anonymous one-retailer sample may not generalize to other businesses.
+
+**Main recommendation?**  
+Use the model to rank opportunities, choose the threshold based on business cost, and test actions experimentally.
+
+# Sources
+
+- [Official UCI dataset record](https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset)
+- [Dataset DOI](https://doi.org/10.24432/C5F88Q)
+- [Associated peer-reviewed paper](https://doi.org/10.1007/s00521-018-3523-0)
+

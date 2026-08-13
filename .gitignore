@@ -1,0 +1,6 @@
+.DS_Store
+/.quarto/
+/*_cache/
+/*_files/
+*.knit.md
+*.utf8.md

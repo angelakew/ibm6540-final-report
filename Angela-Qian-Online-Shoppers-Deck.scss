@@ -1,0 +1,28 @@
+/*-- scss:defaults --*/
+$font-family-sans-serif: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+$presentation-heading-font: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+$presentation-heading-color: #17324d;
+$body-color: #293946;
+$link-color: #0a7282;
+$presentation-font-size-root: 30px;
+$presentation-h1-font-size: 2.15em;
+$presentation-h2-font-size: 1.5em;
+$presentation-h3-font-size: 0.92em;
+
+/*-- scss:rules --*/
+.reveal .slides { text-align: left; }
+.reveal .slides section { padding-top: 16px; }
+.reveal h1, .reveal h2, .reveal h3 { font-weight: 700; letter-spacing: -0.02em; }
+.reveal h2 { border-bottom: 4px solid #2a9d8f; padding-bottom: 0.18em; margin-bottom: 0.55em; }
+.reveal h3 { color: #0a7282; margin-bottom: 0.3em; }
+.reveal p, .reveal li { line-height: 1.32; }
+.reveal li { margin-bottom: 0.28em; }
+.reveal blockquote { width: 90%; margin: 1.2em auto; border-left: 8px solid #f28e5b; padding: 0.25em 0 0.25em 0.8em; box-shadow: none; font-size: 1.35em; font-style: normal; color: #17324d; }
+.reveal .statement-slide { display: flex !important; flex-direction: column; justify-content: center; }
+.reveal .slide-number { color: #516778; background: transparent; }
+.reveal figcaption { font-size: 0.55em; color: #617485; }
+.reveal .columns { gap: 0.8em; }
+.reveal code { color: #0a7282; }
+.reveal .title-slide h1 { color: #17324d; font-size: 2.3em; }
+.reveal .title-slide .subtitle { color: #0a7282; font-size: 1.05em; }
+.reveal .title-slide { border-left: 18px solid #f28e5b; padding-left: 1.2em; }

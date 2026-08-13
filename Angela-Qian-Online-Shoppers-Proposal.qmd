@@ -1,0 +1,293 @@
+---
+title: "Predicting Online Purchases"
+subtitle: "An e-commerce conversion analytics proposal"
+author: "Angela Qian"
+date: today
+format:
+  revealjs:
+    theme: [default, Angela-Qian-Online-Shoppers-Deck.scss]
+    transition: fade
+    slide-number: c/t
+    progress: true
+    center: false
+    width: 1600
+    height: 900
+    margin: 0.06
+    embed-resources: true
+    auto-stretch: false
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(scales)
+
+shop <- read_csv("Online-Shoppers-UCI.csv", show_col_types = FALSE) |>
+  mutate(
+    Revenue = factor(Revenue, levels = c(FALSE, TRUE),
+                     labels = c("No purchase", "Purchase")),
+    Weekend = factor(Weekend, levels = c(FALSE, TRUE),
+                     labels = c("Weekday", "Weekend"))
+  )
+```
+
+## The question is simple {.statement-slide}
+
+> Which website visits are most likely to end in a purchase?
+
+**Project goal:** build a classification model that helps an e-commerce team recognize high-conversion sessions and improve the customer journey.
+
+::: {.notes}
+[Sources]
+- UCI Machine Learning Repository, Online Shoppers Purchasing Intention Dataset: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## This approved dataset is ready for analysis
+
+:::: {.columns}
+::: {.column width="57%"}
+
+### Online Shoppers Purchasing Intention
+
+- **Source:** UCI Machine Learning Repository
+- **Subject area:** Business
+- **Task:** Classification and clustering
+- **Observations:** 12,330 website sessions
+- **Predictors:** 17 browsing and visitor variables
+- **Outcome:** Revenue, true or false
+- **Missing values:** None
+- **License:** CC BY 4.0
+
+:::
+::: {.column width="39%"}
+
+```{r}
+#| label: fig-outcomes
+#| fig-width: 6
+#| fig-height: 5
+#| fig-cap: "Observed session outcomes"
+shop |>
+  count(Revenue) |>
+  mutate(share = n / sum(n)) |>
+  ggplot(aes(Revenue, share, fill = Revenue)) +
+  geom_col(width = .62, show.legend = FALSE) +
+  geom_text(aes(label = percent(share, accuracy = .1)),
+            vjust = -0.45, fontface = "bold", size = 7) +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(labels = percent, limits = c(0, 1)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid = element_blank())
+```
+
+:::
+::::
+
+::: {.notes}
+[Sources]
+- UCI dataset documentation: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+- Dataset DOI: https://doi.org/10.24432/C5F88Q
+:::
+
+## The variables describe a familiar shopping journey
+
+:::: {.columns}
+::: {.column width="48%"}
+
+### What visitors did
+
+- Administrative pages and time
+- Informational pages and time
+- Product pages and time
+- Bounce rate and exit rate
+- Page value
+
+:::
+::: {.column width="48%"}
+
+### Who and when
+
+- New or returning visitor
+- Traffic type and region
+- Browser and operating system
+- Month and weekend
+- Closeness to a special day
+
+:::
+::::
+
+The target, **Revenue**, records whether the session ended in a transaction.
+
+::: {.notes}
+[Sources]
+- UCI variable definitions: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## The business problem is lost conversion opportunity
+
+Most sessions do not end in a purchase. The e-commerce team needs to understand where purchasing behavior differs from non-purchasing behavior.
+
+:::: {.columns}
+::: {.column width="31%"}
+
+### Diagnose
+
+Find behaviors connected with successful visits.
+
+:::
+::: {.column width="31%"}
+
+### Predict
+
+Estimate the chance that a session will produce revenue.
+
+:::
+::: {.column width="31%"}
+
+### Improve
+
+Use the findings to guide site and campaign decisions.
+
+:::
+::::
+
+## The e-commerce manager is the main audience
+
+The **E-commerce Marketing Manager** needs clear evidence about which sessions are more likely to convert and where customers may be dropping out.
+
+The findings can also help:
+
+- Website managers improve product-page journeys
+- Paid media teams compare traffic quality
+- CRM teams plan remarketing for visitors who do not purchase
+- Executives monitor conversion opportunities
+
+## Three questions keep the project focused
+
+1. **Prediction:** How accurately can a purchase be predicted from session behavior?
+2. **Drivers:** Which browsing and visitor variables are most useful for distinguishing purchases?
+3. **Action:** Which customer journeys or traffic segments should receive attention first?
+
+The outcome is binary, making logistic regression a clear baseline that is easy to explain.
+
+## Purchasing sessions spend more time with products
+
+```{r}
+#| label: fig-product-time
+#| fig-width: 11
+#| fig-height: 4.3
+#| fig-cap: "Median product-related duration by session outcome"
+shop |>
+  group_by(Revenue) |>
+  summarise(`Median seconds` = median(ProductRelated_Duration), .groups = "drop") |>
+  ggplot(aes(Revenue, `Median seconds`, fill = Revenue)) +
+  geom_col(width = .58, show.legend = FALSE) +
+  geom_text(aes(label = comma(`Median seconds`, accuracy = 1)),
+            vjust = -0.45, size = 7, fontface = "bold") +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(labels = comma, limits = c(0, 1300)) +
+  labs(x = NULL, y = "Median product-related duration (seconds)") +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid.major.x = element_blank())
+```
+
+Purchasing sessions spent about twice as long on product pages. This is a pattern, not proof of cause.
+
+::: {.notes}
+[Sources]
+- Calculations use online_shoppers_intention.csv from UCI: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## Conversion changes across the year
+
+```{r}
+#| label: fig-month
+#| fig-width: 11
+#| fig-height: 4.4
+#| fig-cap: "Observed purchase rate by month"
+month_order <- c("Feb", "Mar", "May", "June", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+shop |>
+  mutate(Month = factor(Month, levels = month_order)) |>
+  group_by(Month) |>
+  summarise(rate = mean(Revenue == "Purchase"), .groups = "drop") |>
+  ggplot(aes(Month, rate, group = 1)) +
+  geom_line(color = "#326B77", linewidth = 1.6) +
+  geom_point(aes(color = rate), size = 5) +
+  scale_color_gradient(low = "#8EC6C5", high = "#F28E5B", guide = "none") +
+  scale_y_continuous(labels = percent, limits = c(0, .30)) +
+  labs(x = NULL, y = "Observed purchase rate") +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid.minor = element_blank())
+```
+
+November had the highest purchase rate (25.4%), so timing should be tested in the model.
+
+::: {.notes}
+[Sources]
+- Calculations use online_shoppers_intention.csv from UCI: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## The analysis can stay practical and manageable
+
+:::: {.columns}
+::: {.column width="47%"}
+
+### Modeling steps
+
+1. Check distributions and class balance
+2. Create a stratified train/test split
+3. Prepare categorical predictors
+4. Fit logistic regression
+5. Compare one tree-based model
+6. Evaluate on the test set
+
+:::
+::: {.column width="49%"}
+
+### Evaluation measures
+
+- **Recall:** purchases correctly identified
+- **Precision:** how often a purchase prediction is right
+- **ROC AUC:** overall ranking quality
+- **Confusion matrix:** correct and incorrect decisions
+
+Because only 15.5% of sessions purchased, accuracy alone will not be enough.
+
+:::
+::::
+
+## The project can lead to clear marketing actions
+
+If the model performs well, the company can:
+
+- Identify the browsing patterns most connected with purchases
+- Improve pages where visitors commonly exit
+- Compare the quality of traffic sources
+- Time campaigns around stronger conversion periods
+- Build better remarketing audiences
+
+**Recommendation:** approve the Online Shoppers dataset and begin with exploratory analysis and logistic regression.
+
+## Approved source
+
+**Dataset:** Online Shoppers Purchasing Intention Dataset  
+<https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset>
+
+**DOI:** <https://doi.org/10.24432/C5F88Q>
+
+**License:** Creative Commons Attribution 4.0 International
+
+**Downloaded file:** `Online-Shoppers-UCI.csv`
+
+This project offers a direct business question, understandable variables, and a simple outcome that is easy to present.
+
+::: {.notes}
+[Sources]
+- UCI Machine Learning Repository: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+- CC BY 4.0 license: https://creativecommons.org/licenses/by/4.0/legalcode
+:::

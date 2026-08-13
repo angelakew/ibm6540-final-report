@@ -1,0 +1,693 @@
+---
+title: "Predicting Online Purchases"
+subtitle: "Turning website behavior into conversion decisions"
+author:
+  - Angela Qian
+  - Bhamini Pillai
+  - Willy Su
+date: today
+format:
+  revealjs:
+    theme: [default, Angela-Qian-Online-Shoppers-Final.scss]
+    transition: fade
+    slide-number: c/t
+    progress: true
+    center: false
+    width: 1600
+    height: 900
+    margin: 0.055
+    embed-resources: true
+    auto-stretch: false
+    code-overflow: wrap
+execute:
+  echo: false
+  warning: false
+  message: false
+  freeze: auto
+---
+
+```{r}
+#| label: setup
+library(tidymodels)
+library(tidyverse)
+library(scales)
+
+set.seed(6540)
+
+shop <- read_csv("Online-Shoppers-UCI.csv", show_col_types = FALSE) |>
+  mutate(
+    Revenue = factor(Revenue, levels = c(FALSE, TRUE),
+                     labels = c("No purchase", "Purchase")),
+    Weekend = factor(Weekend, levels = c(FALSE, TRUE),
+                     labels = c("Weekday", "Weekend")),
+    across(c(OperatingSystems, Browser, Region, TrafficType), factor)
+  )
+
+shop_split <- initial_split(shop, prop = .80, strata = Revenue)
+shop_train <- training(shop_split)
+shop_test <- testing(shop_split)
+
+shop_rec <- recipe(Revenue ~ ., data = shop_train) |>
+  step_novel(all_nominal_predictors()) |>
+  step_unknown(all_nominal_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors()) |>
+  step_normalize(all_numeric_predictors())
+
+log_spec <- logistic_reg() |>
+  set_engine("glm") |>
+  set_mode("classification")
+
+tree_spec <- decision_tree(cost_complexity = .002, tree_depth = 8, min_n = 20) |>
+  set_engine("rpart") |>
+  set_mode("classification")
+
+rf_spec <- rand_forest(mtry = 7, trees = 500, min_n = 12) |>
+  set_engine("ranger", importance = "permutation", probability = TRUE) |>
+  set_mode("classification")
+
+fit_model <- function(spec) {
+  workflow() |>
+    add_recipe(shop_rec) |>
+    add_model(spec) |>
+    fit(shop_train)
+}
+
+log_fit <- fit_model(log_spec)
+tree_fit <- fit_model(tree_spec)
+rf_fit <- fit_model(rf_spec)
+
+score_model <- function(fit, label) {
+  scored <- bind_cols(
+    shop_test |> select(Revenue),
+    predict(fit, shop_test, type = "prob"),
+    predict(fit, shop_test, type = "class")
+  )
+  tibble(
+    Model = label,
+    `ROC AUC` = roc_auc_vec(scored$Revenue, scored$.pred_Purchase,
+                            event_level = "second"),
+    Accuracy = accuracy_vec(scored$Revenue, scored$.pred_class),
+    Recall = sens_vec(scored$Revenue, scored$.pred_class,
+                      event_level = "second"),
+    Precision = precision_vec(scored$Revenue, scored$.pred_class,
+                              event_level = "second")
+  )
+}
+
+model_metrics <- bind_rows(
+  score_model(log_fit, "Logistic regression"),
+  score_model(tree_fit, "Decision tree"),
+  score_model(rf_fit, "Random forest")
+)
+
+rf_pred <- bind_cols(
+  shop_test |> select(Revenue),
+  predict(rf_fit, shop_test, type = "prob")
+) |>
+  mutate(
+    pred_50 = factor(if_else(.pred_Purchase >= .50, "Purchase", "No purchase"),
+                     levels = levels(Revenue)),
+    pred_30 = factor(if_else(.pred_Purchase >= .30, "Purchase", "No purchase"),
+                     levels = levels(Revenue))
+  )
+
+threshold_metrics <- tibble(
+  Threshold = c("50%", "30%"),
+  Recall = c(
+    sens_vec(rf_pred$Revenue, rf_pred$pred_50, event_level = "second"),
+    sens_vec(rf_pred$Revenue, rf_pred$pred_30, event_level = "second")
+  ),
+  Precision = c(
+    precision_vec(rf_pred$Revenue, rf_pred$pred_50, event_level = "second"),
+    precision_vec(rf_pred$Revenue, rf_pred$pred_30, event_level = "second")
+  )
+)
+
+rf_importance <- enframe(
+  extract_fit_engine(rf_fit)$variable.importance,
+  name = "Feature", value = "Importance"
+) |>
+  arrange(desc(Importance)) |>
+  slice_head(n = 10) |>
+  mutate(Feature = str_replace_all(Feature, "_", " "))
+
+no_page_rec <- recipe(Revenue ~ ., data = shop_train) |>
+  step_rm(PageValues) |>
+  step_novel(all_nominal_predictors()) |>
+  step_unknown(all_nominal_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors()) |>
+  step_normalize(all_numeric_predictors())
+
+no_page_fit <- workflow() |>
+  add_recipe(no_page_rec) |>
+  add_model(log_spec) |>
+  fit(shop_train)
+
+no_page_metrics <- score_model(no_page_fit, "Logistic model without page value")
+
+duration_grid <- quantile(shop_train$ProductRelated_Duration,
+                          probs = seq(.05, .95, length.out = 15))
+duration_pdp <- map_dfr(duration_grid, function(x) {
+  new_data <- shop_test
+  new_data$ProductRelated_Duration <- x
+  tibble(
+    Duration = x,
+    Probability = mean(predict(no_page_fit, new_data, type = "prob")$.pred_Purchase)
+  )
+})
+
+month_order <- c("Feb", "Mar", "May", "June", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+month_pdp <- map_dfr(month_order, function(x) {
+  new_data <- shop_test
+  new_data$Month <- x
+  tibble(Month = x,
+         Probability = mean(predict(rf_fit, new_data, type = "prob")$.pred_Purchase))
+}) |>
+  mutate(Month = factor(Month, levels = month_order))
+
+visitor_pdp <- map_dfr(unique(shop_train$VisitorType), function(x) {
+  new_data <- shop_test
+  new_data$VisitorType <- x
+  tibble(
+    VisitorType = str_replace_all(x, "_", " "),
+    Probability = mean(predict(rf_fit, new_data, type = "prob")$.pred_Purchase)
+  )
+}) |>
+  arrange(desc(Probability))
+
+test_auc <- model_metrics |> filter(Model == "Random forest") |> pull(`ROC AUC`)
+```
+
+## Where this presentation is going {.agenda-slide}
+
+1. Business problem and data
+2. Objective 1: predict purchases
+3. Objective 2: explain conversion behavior
+4. Objective 3: find audience and timing opportunities
+5. Recommendations, limitations, and next steps
+
+## Every session is a conversion opportunity
+
+An online store receives thousands of visits, but most visitors leave without purchasing.
+
+> The business challenge is to recognize promising sessions and understand where the customer journey breaks down.
+
+Our analysis connects browsing behavior to a clear outcome: **did the session produce revenue?**
+
+::: {.notes}
+[Sources]
+- UCI Machine Learning Repository: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## The decision problem is practical
+
+The e-commerce team wants to answer three questions:
+
+- Which sessions are most likely to end in a purchase?
+- Which behaviors best separate purchases from non-purchases?
+- Which visitor and seasonal segments offer the strongest opportunities?
+
+These answers can guide website improvements, media spending, and remarketing.
+
+## Three objectives divide the work clearly {.team-slide}
+
+| Owner | Analytics objective | Business outcome |
+|---|---|---|
+| Angela Qian | Compare classification models | Choose a reliable purchase-risk model |
+| Bhamini Pillai | Explain behavioral drivers | Identify journey signals that matter |
+| Willy Su | Evaluate visitor and seasonal patterns | Improve audience and campaign timing |
+
+## Conversion analysis matters beyond prediction
+
+Better conversion knowledge can help a business:
+
+- Spend marketing resources on higher-quality traffic
+- Improve pages associated with customer exit
+- Build more focused remarketing audiences
+- Plan campaigns around stronger purchasing periods
+- Monitor performance with repeatable model metrics
+
+## The sample represents 12,330 sessions
+
+:::: {.columns}
+::: {.column width="52%"}
+
+- One year of e-commerce sessions
+- Each record represents a different user session
+- 17 browsing, visitor, device, and timing predictors
+- Binary outcome: purchase or no purchase
+- No reported missing values
+- Business dataset licensed under CC BY 4.0
+
+:::
+::: {.column width="44%"}
+
+```{r}
+#| label: fig-class-balance-final
+#| fig-width: 5.5
+#| fig-height: 4.2
+shop |>
+  count(Revenue) |>
+  mutate(Share = n / sum(n)) |>
+  ggplot(aes(Revenue, Share, fill = Revenue)) +
+  geom_col(width = .62, show.legend = FALSE) +
+  geom_text(aes(label = percent(Share, accuracy = .1)),
+            vjust = -.4, fontface = "bold", size = 6.5) +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(labels = percent, limits = c(0, 1)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 17) +
+  theme(panel.grid = element_blank())
+```
+
+:::
+::::
+
+::: {.notes}
+[Sources]
+- UCI dataset documentation: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## The predictors follow the customer journey
+
+:::: {.columns}
+::: {.column width="31%"}
+
+### Engagement
+
+Page counts and time spent on administrative, informational, and product pages
+
+:::
+::: {.column width="31%"}
+
+### Friction and value
+
+Bounce rate, exit rate, page value, and proximity to a special day
+
+:::
+::: {.column width="31%"}
+
+### Context
+
+Month, visitor type, weekend, traffic source, browser, region, and operating system
+
+:::
+::::
+
+::: {.notes}
+[Sources]
+- UCI variable definitions: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+:::
+
+## Wrangling made the data model-ready
+
+```{r}
+#| echo: true
+#| eval: false
+shop <- read_csv("Online-Shoppers-UCI.csv") |>
+  mutate(
+    Revenue = factor(Revenue,
+      levels = c(FALSE, TRUE),
+      labels = c("No purchase", "Purchase")),
+    Weekend = factor(Weekend),
+    across(c(OperatingSystems, Browser,
+             Region, TrafficType), factor)
+  )
+```
+
+We checked variable types, missingness, class balance, and plausible ranges before modeling.
+
+## Objective 1: Which model predicts purchases best? {.section-slide}
+
+**Owner: Angela Qian**
+
+Compare an interpretable baseline, a single decision tree, and a random forest using the same train/test split and preprocessing steps.
+
+## We tested three classification approaches
+
+| Method | Why include it? |
+|---|---|
+| Logistic regression | Clear baseline and interpretable coefficients |
+| Decision tree | Simple nonlinear rules and interactions |
+| Random forest | Ensemble that can capture complex patterns |
+
+Regression-focused methods were not selected because the business outcome is categorical.
+
+## The split protects the final evaluation
+
+```{r}
+#| echo: true
+#| eval: false
+shop_split <- initial_split(
+  shop, prop = .80, strata = Revenue
+)
+
+shop_train <- training(shop_split)
+shop_test  <- testing(shop_split)
+```
+
+- **Training set:** 80% of sessions
+- **Test set:** 20% of sessions
+- **Stratification:** preserves the 15.5% purchase rate
+
+## One recipe keeps preprocessing consistent
+
+```{r}
+#| echo: true
+#| eval: false
+shop_rec <- recipe(Revenue ~ ., data = shop_train) |>
+  step_novel(all_nominal_predictors()) |>
+  step_unknown(all_nominal_predictors()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors()) |>
+  step_normalize(all_numeric_predictors())
+```
+
+The same recipe was used for all three candidate models.
+
+## The random forest ranked sessions best
+
+```{r}
+#| label: fig-model-comparison
+#| fig-width: 10.5
+#| fig-height: 4.5
+model_metrics |>
+  select(Model, `ROC AUC`, Recall, Precision) |>
+  pivot_longer(-Model, names_to = "Metric", values_to = "Value") |>
+  ggplot(aes(Value, Model, color = Metric)) +
+  geom_point(size = 6) +
+  scale_color_manual(values = c("#326B77", "#E9A23B", "#F28E5B")) +
+  scale_x_continuous(limits = c(0, 1), labels = percent) +
+  labs(x = NULL, y = NULL, color = NULL) +
+  theme_minimal(base_size = 18) +
+  theme(legend.position = "top", panel.grid.major.y = element_blank())
+```
+
+The random forest achieved **`r number(test_auc, accuracy = .001)` ROC AUC** on unseen test data.
+
+## A lower threshold finds more purchasers
+
+```{r}
+#| label: fig-thresholds
+#| fig-width: 10
+#| fig-height: 4.2
+threshold_metrics |>
+  pivot_longer(-Threshold, names_to = "Metric", values_to = "Value") |>
+  ggplot(aes(Threshold, Value, fill = Metric)) +
+  geom_col(position = position_dodge(.75), width = .68) +
+  geom_text(aes(label = percent(Value, accuracy = .1)),
+            position = position_dodge(.75), vjust = -.35,
+            size = 5.7, fontface = "bold") +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(labels = percent, limits = c(0, .9)) +
+  labs(x = "Purchase probability threshold", y = NULL, fill = NULL) +
+  theme_minimal(base_size = 18) +
+  theme(legend.position = "top", panel.grid.major.x = element_blank())
+```
+
+At 30%, recall rises to 75.1% while precision remains 62.5%.
+
+## Objective 1 finding {.finding-slide}
+
+> Use the random forest for ranking sessions, then select the threshold based on outreach capacity and the cost of missed purchasers.
+
+- Best test ROC AUC: 0.919
+- A 30% threshold finds three out of four purchasing sessions
+- A 50% threshold produces fewer but more precise alerts
+
+## Objective 2: What behavior signals conversion? {.section-slide}
+
+**Owner: Bhamini Pillai**
+
+Explain which customer-journey variables matter and whether engagement patterns remain useful without the strongest page-value signal.
+
+## Purchasers spend longer on product pages
+
+```{r}
+#| label: fig-duration-final
+#| fig-width: 9.5
+#| fig-height: 4.3
+shop |>
+  group_by(Revenue) |>
+  summarise(Duration = median(ProductRelated_Duration), .groups = "drop") |>
+  ggplot(aes(Revenue, Duration, fill = Revenue)) +
+  geom_col(width = .58, show.legend = FALSE) +
+  geom_text(aes(label = comma(Duration, accuracy = 1)),
+            vjust = -.4, size = 6.2, fontface = "bold") +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(limits = c(0, 1300), labels = comma) +
+  labs(x = NULL, y = "Median product-page duration (seconds)") +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid.major.x = element_blank())
+```
+
+Purchasing sessions had a median product-page duration of 1,110 seconds versus 510 seconds.
+
+## Page value dominates model importance
+
+```{r}
+#| label: fig-importance
+#| fig-width: 10
+#| fig-height: 4.6
+rf_importance |>
+  slice_head(n = 8) |>
+  ggplot(aes(Importance, reorder(Feature, Importance))) +
+  geom_col(fill = "#326B77", width = .68) +
+  labs(x = "Permutation importance", y = NULL) +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid.major.y = element_blank())
+```
+
+Exit behavior, engagement, and administrative activity also contribute to prediction.
+
+## We ran a stricter behavioral model
+
+Page value is closely connected with transaction activity, so we also fitted logistic regression **without PageValues**.
+
+```{r}
+#| echo: true
+#| eval: false
+behavior_recipe <- recipe(Revenue ~ ., data = shop_train) |>
+  step_rm(PageValues) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_normalize(all_numeric_predictors())
+```
+
+This model asks whether earlier browsing behavior still contains predictive information.
+
+## Behavior alone provides moderate ranking power
+
+:::: {.columns}
+::: {.column width="48%"}
+
+### Without page value
+
+- ROC AUC: **0.715**
+- Accuracy: **83.9%**
+- Recall at 50%: **3.7%**
+
+:::
+::: {.column width="48%"}
+
+### Interpretation
+
+Behavior helps rank sessions, but the default 50% cutoff misses most purchases.
+
+The model needs threshold tuning or class-sensitive training before operational use.
+
+:::
+::::
+
+## Longer product engagement raises predicted probability
+
+```{r}
+#| label: fig-duration-pdp
+#| fig-width: 10
+#| fig-height: 4.4
+duration_pdp |>
+  ggplot(aes(Duration, Probability)) +
+  geom_line(color = "#326B77", linewidth = 1.7) +
+  geom_point(color = "#F28E5B", size = 3.5) +
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = percent) +
+  labs(x = "Product-related duration (seconds)",
+       y = "Average predicted purchase probability") +
+  theme_minimal(base_size = 18)
+```
+
+The partial-dependence pattern is an association, not a causal effect.
+
+## Objective 2 finding {.finding-slide}
+
+> Page value is the strongest model signal, while product engagement and exit behavior provide earlier clues about conversion.
+
+- Use page value carefully because it is close to the transaction outcome
+- Monitor exit rate as a possible friction signal
+- Treat long product browsing as an opportunity for assistance or remarketing
+
+## Objective 3: Which segments deserve attention? {.section-slide}
+
+**Owner: Willy Su**
+
+Estimate how purchase probability changes across months and visitor types while the random forest holds the rest of the sample constant.
+
+## Observed conversion peaks in November
+
+```{r}
+#| label: fig-observed-month-final
+#| fig-width: 10.5
+#| fig-height: 4.4
+shop |>
+  mutate(Month = factor(Month, levels = month_order)) |>
+  group_by(Month) |>
+  summarise(Rate = mean(Revenue == "Purchase"), .groups = "drop") |>
+  ggplot(aes(Month, Rate, group = 1)) +
+  geom_line(color = "#326B77", linewidth = 1.6) +
+  geom_point(aes(color = Rate), size = 4.8) +
+  scale_color_gradient(low = "#8EC6C5", high = "#F28E5B", guide = "none") +
+  scale_y_continuous(labels = percent, limits = c(0, .30)) +
+  labs(x = NULL, y = "Observed purchase rate") +
+  theme_minimal(base_size = 18)
+```
+
+November's observed purchase rate was 25.4%.
+
+## The segment analysis uses the ensemble model
+
+For every month or visitor type, we:
+
+1. Set that feature to one value for all test sessions
+2. Predicted each session with the fitted random forest
+3. Averaged the predicted purchase probabilities
+4. Repeated the process for every category
+
+This partial-dependence approach summarizes model behavior while holding the test population constant.
+
+## Month remains important after adjustment
+
+```{r}
+#| label: fig-month-pdp-final
+#| fig-width: 10.5
+#| fig-height: 4.4
+month_pdp |>
+  ggplot(aes(Month, Probability, group = 1)) +
+  geom_line(color = "#326B77", linewidth = 1.6) +
+  geom_point(color = "#F28E5B", size = 4.8) +
+  scale_y_continuous(labels = percent) +
+  labs(x = NULL, y = "Average predicted purchase probability") +
+  theme_minimal(base_size = 18)
+```
+
+The model assigns the strongest adjusted probabilities to late-year sessions.
+
+## Visitor type changes predicted conversion
+
+```{r}
+#| label: fig-visitor-pdp-final
+#| fig-width: 9.5
+#| fig-height: 4.3
+visitor_pdp |>
+  ggplot(aes(Probability, reorder(VisitorType, Probability))) +
+  geom_col(fill = "#326B77", width = .62) +
+  geom_text(aes(label = percent(Probability, accuracy = .1)),
+            hjust = -0.2, fontface = "bold", size = 5.8) +
+  scale_x_continuous(labels = percent, limits = c(0, .23)) +
+  labs(x = "Average predicted purchase probability", y = NULL) +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid.major.y = element_blank())
+```
+
+Visitor type should inform audience strategy, but the differences are smaller than the page-value signal.
+
+## Objective 3 finding {.finding-slide}
+
+> Timing and visitor type can improve campaign planning, but they should complement—not replace—session behavior.
+
+- Prepare conversion campaigns before the late-year peak
+- Test different messages for new and returning visitors
+- Compare traffic quality within each segment
+- Validate segment strategies through controlled experiments
+
+## Three findings answer the business problem {.summary-slide}
+
+1. **Prediction:** the random forest ranked purchase likelihood well, with 0.919 test ROC AUC.
+2. **Behavior:** page value led the model; product engagement and exit behavior added useful signals.
+3. **Segments:** late-year timing and visitor type changed predicted conversion opportunities.
+
+## Recommended business actions {.recommend-slide}
+
+:::: {.columns}
+::: {.column width="31%"}
+
+### Prioritize
+
+Score sessions and use a threshold matched to available outreach capacity.
+
+:::
+::: {.column width="31%"}
+
+### Improve
+
+Review high-exit journeys and support visitors showing sustained product interest.
+
+:::
+::: {.column width="31%"}
+
+### Test
+
+Run controlled experiments on timing, audiences, and remarketing messages.
+
+:::
+::::
+
+## Results have important limitations
+
+- The data represents sessions, not a longitudinal customer history
+- The source does not identify the retailer or product categories
+- Page value may contain information close to the final transaction
+- Class imbalance makes accuracy potentially misleading
+- Model relationships do not prove that a business action will cause conversion
+- Current performance should be validated on newer company data
+
+## Next steps move from model to decision
+
+1. Tune hyperparameters with cross-validation
+2. Compare probability calibration and business costs
+3. Validate the threshold using campaign capacity
+4. Test explanations with SHAP values
+5. Deploy a simple scoring app
+6. Measure incremental conversion through an experiment
+
+## Project resources {.resource-slide}
+
+**GitHub repository:** *Add the team's clickable repository URL*  
+**Presentation:** *Add the published RevealJS URL*  
+**Deployed model:** *Add the Shiny or Vetiver URL*
+
+**Dataset:** [UCI Online Shoppers Purchasing Intention](https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset)  
+**DOI:** [10.24432/C5F88Q](https://doi.org/10.24432/C5F88Q)
+
+::: {.notes}
+[Sources]
+- UCI Machine Learning Repository: https://archive.ics.uci.edu/dataset/468/online+shoppers+purchasing+intention+dataset
+- Dataset DOI: https://doi.org/10.24432/C5F88Q
+:::
+
+## Appendix: reproducibility
+
+- Random seed: 6540
+- Stratified 80/20 train/test split
+- Shared preprocessing recipe across candidate models
+- Test set used only for final comparison
+- R packages: tidymodels, tidyverse, ranger, and Quarto
+- Complete analysis code is contained in this QMD file
+
+The public links should be added before submission.
+
+## The business value is focused learning {.statement-slide .closing-slide}
+
+> Predict purchase likelihood, explain the customer journey, and test the actions that follow.
+
+The model is a starting point for better decisions—not a substitute for experimentation.
