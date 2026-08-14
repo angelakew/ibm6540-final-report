@@ -4,7 +4,6 @@ subtitle: "Turning website behavior into conversion decisions"
 author:
   - Angela Qian
   - Bhamini Pillai
-  - Willy Su
 date: today
 format:
   revealjs:
@@ -177,16 +176,37 @@ visitor_pdp <- map_dfr(unique(shop_train$VisitorType), function(x) {
 }) |>
   arrange(desc(Probability))
 
+weekend_observed <- shop |>
+  group_by(Weekend) |>
+  summarise(
+    PurchaseRate = mean(Revenue == "Purchase"),
+    Sessions = n(),
+    Purchases = sum(Revenue == "Purchase"),
+    .groups = "drop"
+  )
+
+weekend_pdp <- map_dfr(levels(shop_train$Weekend), function(x) {
+  new_data <- shop_test
+  new_data$Weekend <- factor(x, levels = levels(shop_train$Weekend))
+  tibble(
+    Weekend = x,
+    Probability = mean(
+      predict(rf_fit, new_data, type = "prob")$.pred_Purchase
+    )
+  )
+})
+
 test_auc <- model_metrics |> filter(Model == "Random forest") |> pull(`ROC AUC`)
 ```
 
 ## Where this presentation is going {.agenda-slide}
 
 1. Business problem and data
-2. Objective 1: predict purchases
-3. Objective 2: explain conversion behavior
-4. Objective 3: find audience and timing opportunities
-5. Recommendations, limitations, and next steps
+2. AO1: Compare models
+3. AO2: Explain behavioral drivers
+4. AO3: Visitor and seasonal patterns
+5. AO4: Weekend vs. weekday behavior
+6. Recommendations and next steps
 
 ## Every session is a conversion opportunity
 
@@ -203,21 +223,23 @@ Our analysis connects browsing behavior to a clear outcome: **did the session pr
 
 ## The decision problem is practical
 
-The e-commerce team wants to answer three questions:
+The e-commerce team wants to answer four questions:
 
 - Which sessions are most likely to end in a purchase?
-- Which behaviors best separate purchases from non-purchases?
-- Which visitor and seasonal segments offer the strongest opportunities?
+- Which browsing behaviors are most strongly associated with purchase outcomes?
+- How do visitor type and seasonal timing relate to purchase likelihood?
+- Do weekend and weekday sessions differ in purchase likelihood?
 
-These answers can guide website improvements, media spending, and remarketing.
+**Business goal:** use these insights to prioritize conversion opportunities, improve the customer journey, and guide campaign planning.
 
-## Three objectives divide the work clearly {.team-slide}
+## Four objectives divide the work clearly {.team-slide}
 
 | Owner | Analytics objective | Business outcome |
 |---|---|---|
 | Angela Qian | Compare classification models | Choose a reliable purchase-risk model |
-| Bhamini Pillai | Explain behavioral drivers | Identify journey signals that matter |
-| Willy Su | Evaluate visitor and seasonal patterns | Improve audience and campaign timing |
+| Angela Qian | Explain behavioral drivers | Identify journey signals that matter |
+| Bhamini Pillai | Evaluate visitor and seasonal patterns | Improve audience and campaign timing |
+| Bhamini Pillai | Evaluate weekend vs. weekday behavior | Assess day-specific opportunities |
 
 ## Conversion analysis matters beyond prediction
 
@@ -229,17 +251,22 @@ Better conversion knowledge can help a business:
 - Plan campaigns around stronger purchasing periods
 - Monitor performance with repeatable model metrics
 
-## The sample represents 12,330 sessions
+## Population and sample
 
 :::: {.columns}
 ::: {.column width="52%"}
 
-- One year of e-commerce sessions
-- Each record represents a different user session
-- 17 browsing, visitor, device, and timing predictors
-- Binary outcome: purchase or no purchase
-- No reported missing values
-- Business dataset licensed under CC BY 4.0
+**Population**  
+Online shopping sessions represented by the UCI study population.
+
+**Sample**
+
+- 12,330 observed sessions over one year
+- Each session belongs to a different user
+- 17 predictors plus the `Revenue` outcome
+- No missing values reported
+
+Purchasers spent a median **1,110 seconds** on product pages versus **510 seconds** for non-purchasers.
 
 :::
 ::: {.column width="44%"}
@@ -291,7 +318,7 @@ Bounce rate, exit rate, page value, and proximity to a special day
 
 ### Context
 
-Month, visitor type, weekend, traffic source, browser, region, and operating system
+Month, visitor type, weekend, traffic type, browser, region, and operating system
 
 :::
 ::::
@@ -319,11 +346,11 @@ shop <- read_csv("Online-Shoppers-UCI.csv") |>
 
 We checked variable types, missingness, class balance, and plausible ranges before modeling.
 
-## Objective 1: Which model predicts purchases best? {.section-slide}
+## Objective 1: Compare classification models {.section-slide}
 
 **Owner: Angela Qian**
 
-Compare an interpretable baseline, a single decision tree, and a random forest using the same train/test split and preprocessing steps.
+Compare classification models to identify the most reliable approach for ranking sessions by purchase likelihood.
 
 ## We tested three classification approaches
 
@@ -350,7 +377,7 @@ shop_test  <- testing(shop_split)
 
 - **Training set:** 80% of sessions
 - **Test set:** 20% of sessions
-- **Stratification:** preserves the 15.5% purchase rate
+- **Stratification:** maintains approximately the 15.5% purchase-class proportion in both sets
 
 ## One recipe keeps preprocessing consistent
 
@@ -419,7 +446,7 @@ At 30%, recall rises to 75.1% while precision remains 62.5%.
 
 ## Objective 2: What behavior signals conversion? {.section-slide}
 
-**Owner: Bhamini Pillai**
+**Owner: Angela Qian**
 
 Explain which customer-journey variables matter and whether engagement patterns remain useful without the strongest page-value signal.
 
@@ -445,7 +472,7 @@ shop |>
 
 Purchasing sessions had a median product-page duration of 1,110 seconds versus 510 seconds.
 
-## Page value dominates model importance
+## PageValue dominates model importance
 
 ```{r}
 #| label: fig-importance
@@ -460,11 +487,13 @@ rf_importance |>
   theme(panel.grid.major.y = element_blank())
 ```
 
-Exit behavior, engagement, and administrative activity also contribute to prediction.
+`PageValues` is the strongest predictor in the model.
 
-## We ran a stricter behavioral model
+Other useful signals include exit behavior, product engagement, and administrative activity. Because `PageValues` is closely connected to transaction activity, interpret it cautiously as an early behavioral signal.
 
-Page value is closely connected with transaction activity, so we also fitted logistic regression **without PageValues**.
+## Can browsing behavior predict purchase without PageValue?
+
+**Why remove PageValue?** It is closely connected with transaction activity, so we fitted a second logistic regression without it.
 
 ```{r}
 #| echo: true
@@ -475,7 +504,9 @@ behavior_recipe <- recipe(Revenue ~ ., data = shop_train) |>
   step_normalize(all_numeric_predictors())
 ```
 
-This model asks whether earlier browsing behavior still contains predictive information.
+**Purpose:** determine whether earlier browsing behavior still contains useful predictive information.
+
+This is a sensitivity analysis—not a replacement for the main model.
 
 ## Behavior alone provides moderate ranking power
 
@@ -493,9 +524,9 @@ This model asks whether earlier browsing behavior still contains predictive info
 
 ### Interpretation
 
-Behavior helps rank sessions, but the default 50% cutoff misses most purchases.
+Browsing behavior provides useful ranking information, but the default 50% threshold misses most purchasers.
 
-The model needs threshold tuning or class-sensitive training before operational use.
+Because only 15.5% of sessions result in a purchase, accuracy alone can be misleading.
 
 :::
 ::::
@@ -525,15 +556,15 @@ The partial-dependence pattern is an association, not a causal effect.
 
 - Use page value carefully because it is close to the transaction outcome
 - Monitor exit rate as a possible friction signal
-- Treat long product browsing as an opportunity for assistance or remarketing
+- Test assistance or remarketing for sessions showing sustained product interest
 
-## Objective 3: Which segments deserve attention? {.section-slide}
+## Objective 3: Visitor and seasonal patterns {.section-slide}
 
-**Owner: Willy Su**
+**Owner: Bhamini Pillai**
 
-Estimate how purchase probability changes across months and visitor types while the random forest holds the rest of the sample constant.
+Estimate how purchase probability changes across months and visitor types while other recorded characteristics remain constant.
 
-## Observed conversion peaks in November
+## Observed session-level purchase rate peaks in November
 
 ```{r}
 #| label: fig-observed-month-final
@@ -552,7 +583,9 @@ shop |>
   theme_minimal(base_size = 18)
 ```
 
-November's observed purchase rate was 25.4%.
+**November: 25.4%**
+
+November shows a stronger purchasing period in this dataset and may warrant additional campaign attention.
 
 ## The segment analysis uses the ensemble model
 
@@ -607,40 +640,125 @@ Visitor type should inform audience strategy, but the differences are smaller th
 
 - Prepare conversion campaigns before the late-year peak
 - Test different messages for new and returning visitors
-- Compare traffic quality within each segment
+- Compare performance across visitor types and months
 - Validate segment strategies through controlled experiments
 
-## Three findings answer the business problem {.summary-slide}
+## Objective 4: Weekend vs. weekday behavior {.section-slide}
 
-1. **Prediction:** the random forest ranked purchase likelihood well, with 0.919 test ROC AUC.
-2. **Behavior:** page value led the model; product engagement and exit behavior added useful signals.
-3. **Segments:** late-year timing and visitor type changed predicted conversion opportunities.
+**Owner: Bhamini Pillai**
 
-## Recommended business actions {.recommend-slide}
+Do weekend sessions have different purchase likelihood than weekday sessions?
+
+Understanding day-of-week differences can help an e-commerce team decide whether campaign timing, promotions, remarketing, or website messaging should be tested differently.
+
+## Weekend sessions show a higher purchase rate
+
+```{r}
+#| label: fig-weekend-observed
+#| fig-width: 9.5
+#| fig-height: 4.4
+weekend_observed |>
+  ggplot(aes(Weekend, PurchaseRate, fill = Weekend)) +
+  geom_col(width = .58, show.legend = FALSE) +
+  geom_text(aes(label = percent(PurchaseRate, accuracy = .1)),
+            vjust = -.4, size = 6.3, fontface = "bold") +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(labels = percent, limits = c(0, .22)) +
+  labs(x = NULL, y = "Observed purchase rate") +
+  theme_minimal(base_size = 18) +
+  theme(panel.grid.major.x = element_blank())
+```
+
+Weekend sessions had a **2.5 percentage-point higher** observed purchase rate than weekday sessions. This is an association—not evidence that weekends cause purchasing.
+
+## Weekend effect as a model-based comparison
 
 :::: {.columns}
-::: {.column width="31%"}
+::: {.column width="48%"}
 
-### Prioritize
+### Analysis approach
 
-Score sessions and use a threshold matched to available outreach capacity.
-
-:::
-::: {.column width="31%"}
-
-### Improve
-
-Review high-exit journeys and support visitors showing sustained product interest.
+1. Set all test sessions to weekday
+2. Predict purchase probability
+3. Set all test sessions to weekend
+4. Predict again and compare averages
 
 :::
-::: {.column width="31%"}
+::: {.column width="48%"}
 
-### Test
-
-Run controlled experiments on timing, audiences, and remarketing messages.
+```{r}
+#| label: fig-weekend-pdp
+#| fig-width: 5.4
+#| fig-height: 4.2
+weekend_pdp |>
+  ggplot(aes(Weekend, Probability, fill = Weekend)) +
+  geom_col(width = .58, show.legend = FALSE) +
+  geom_text(aes(label = percent(Probability, accuracy = .1)),
+            vjust = -.4, size = 6, fontface = "bold") +
+  scale_fill_manual(values = c("#326B77", "#F28E5B")) +
+  scale_y_continuous(labels = percent, limits = c(0, .22)) +
+  labs(x = NULL, y = "Average predicted probability") +
+  theme_minimal(base_size = 16) +
+  theme(panel.grid.major.x = element_blank())
+```
 
 :::
 ::::
+
+This isolates the model's estimated weekend relationship while keeping the test population constant. The observed and model-based views answer different questions; neither establishes causality.
+
+## Objective 4 finding {.finding-slide}
+
+> Weekend timing is a promising signal to test—not a reason to automatically shift marketing spending.
+
+- Test whether weekend campaigns generate stronger conversion
+- Compare promotional messaging across weekdays and weekends
+- Consider weekend-specific remarketing experiments
+- Validate any timing strategy through controlled experiments
+
+## Four findings answer the business problem {.summary-slide}
+
+1. **Prediction:** the random forest ranked purchase likelihood well, with 0.919 test ROC AUC.
+2. **Behavior:** page value led the model; product engagement and exit behavior added useful signals.
+3. **Timing and visitor type:** late-year timing and visitor type were associated with different predicted purchase probabilities.
+4. **Weekend behavior:** weekend sessions showed a higher observed purchase rate than weekday sessions.
+
+**Overall:** purchase likelihood is best understood by combining session behavior with visitor and timing context.
+
+## Recommended business actions {.recommend-slide}
+
+:::: {.action-grid}
+::: {.action-item}
+
+### Prioritize
+
+Score sessions and select a threshold based on capacity and business costs.
+
+:::
+::: {.action-item}
+
+### Improve
+
+Investigate high-exit journeys and test help for sustained product interest.
+
+:::
+::: {.action-item}
+
+### Time
+
+Test whether weekend and late-year campaigns produce stronger conversion.
+
+:::
+::: {.action-item}
+
+### Test
+
+Run controlled experiments on audience, timing, messaging, and remarketing.
+
+:::
+::::
+
+**Bottom line:** use the model to identify opportunities, then test whether the actions improve conversion.
 
 ## Results have important limitations
 
@@ -649,6 +767,7 @@ Run controlled experiments on timing, audiences, and remarketing messages.
 - Page value may contain information close to the final transaction
 - Class imbalance makes accuracy potentially misleading
 - Model relationships do not prove that a business action will cause conversion
+- Weekend/weekday differences are observational and require experimental validation before changing campaign allocation
 - Current performance should be validated on newer company data
 
 ## Next steps move from model to decision
@@ -657,8 +776,9 @@ Run controlled experiments on timing, audiences, and remarketing messages.
 2. Compare probability calibration and business costs
 3. Validate the threshold using campaign capacity
 4. Test explanations with SHAP values
-5. Deploy a simple scoring app
-6. Measure incremental conversion through an experiment
+5. Test weekend vs. weekday campaign strategies
+6. Use the deployed scoring app in a controlled pilot
+7. Measure incremental conversion through an experiment
 
 ## Appendix {.appendix-slide}
 
@@ -678,7 +798,8 @@ Run controlled experiments on timing, audiences, and remarketing messages.
 [UCI dataset DOI: 10.24432/C5F88Q](https://doi.org/10.24432/C5F88Q)
 
 **Model availability**  
-The reproducible model analysis is included in the project QMD. A public scoring app is a planned next step.
+The reproducible model analysis is included in the project QMD.  
+[Open the scoring app](https://angelakew.shinyapps.io/online-purchase-explorer/)
 :::
 
 ::: {.notes}
@@ -693,6 +814,7 @@ The reproducible model analysis is included in the project QMD. A public scoring
 - Stratified 80/20 train/test split
 - Shared preprocessing recipe across candidate models
 - Test set used only for final comparison
+- Weekend analysis uses the same test-set prediction framework as the other model-based analyses
 - R packages: tidymodels, tidyverse, ranger, and Quarto
 - Complete analysis code is contained in this QMD file
 
